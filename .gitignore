@@ -10,4 +10,7 @@ data/cache/*
 !data/cache/.gitkeep
 data/vectors/*
 !data/vectors/.gitkeep
+data/transcripts/*
+!data/transcripts/.gitkeep
+data/*.png
 *.log
