@@ -17,14 +17,15 @@ body {
 /* ---- App Shell ---- */
 
 .app-shell {
-  min-height: 100vh;
+  height: 100vh;
   background: #f0f4f8;
 }
 
 /* ---- Sidebar ---- */
 
 .app-sider {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background: linear-gradient(180deg, #ffffff 0%, #f8fafb 100%) !important;
   border-right: 1px solid #e8edf2;
   box-shadow: 2px 0 12px rgba(0, 0, 0, 0.04);
@@ -92,8 +93,9 @@ body {
 
 .workspace {
   padding: 28px 32px;
-  overflow: auto;
+  overflow-y: auto;
   background: #f0f4f8;
+  height: 100vh;
 }
 
 /* ---- Page Header ---- */
@@ -717,6 +719,7 @@ body {
 @media (max-width: 900px) {
   .workspace {
     padding: 16px;
+    height: 100vh;
   }
 
   .app-sider {
