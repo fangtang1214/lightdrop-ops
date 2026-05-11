@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.vite/
+__pycache__/
+*.pyc
+.venv/
+venv/
+data/database.sqlite
+data/cache/*
+!data/cache/.gitkeep
+data/vectors/*
+!data/vectors/.gitkeep
+*.log
