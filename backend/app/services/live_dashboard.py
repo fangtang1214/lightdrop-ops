@@ -28,28 +28,89 @@ REFERENCE_WIDTH = 540
 REFERENCE_HEIGHT = 1080
 FULL_REFERENCE_WIDTH = 1920
 FULL_REFERENCE_HEIGHT = 1080
-CACHE_VERSION = "dashboard-v4"
+CACHE_VERSION = "dashboard-v11"
+ARCHIVE_DIR_NAME = "存档"
+ARCHIVE_SCHEMA_VERSION = "dashboard-session-v7"
 
 METRIC_NAMES = (
-    "like_rate",
-    "comment_rate",
-    "avg_watch_seconds",
+    "live_recommend_delta",
+    "live_recommend_total",
+    "deal_amount_total",
+    "deal_amount_delta",
+    "deal_order_total",
+    "deal_order_delta",
+    "deal_user_total",
+    "deal_user_delta",
+    "online_user_count",
+    "online_user_delta",
     "effective_enter_rate",
+    "avg_watch_seconds",
+    "comment_rate",
+    "like_rate",
+    "thousand_watch_deal_amount",
     "deal_conversion_rate",
     "new_customer_conversion_rate",
-    "live_recommend_total",
-    "live_recommend_delta",
 )
 
 METRIC_LABELS = {
-    "like_rate": "点赞率",
-    "comment_rate": "评论率",
+    "live_recommend_delta": "直播推荐增量",
+    "live_recommend_total": "直播推荐总量",
+    "deal_amount_total": "成交金额总量",
+    "deal_amount_delta": "成交金额增量",
+    "deal_order_total": "成交订单数总量",
+    "deal_order_delta": "成交订单数增量",
+    "deal_user_total": "成交人数总量",
+    "deal_user_delta": "成交人数增量",
+    "online_user_count": "实时在线人数",
+    "online_user_delta": "实时在线人数增量",
+    "effective_enter_rate": "直播有效进房率",
     "avg_watch_seconds": "人均观看时长",
-    "effective_enter_rate": "有效进房率",
+    "comment_rate": "评论率",
+    "like_rate": "点赞率",
+    "thousand_watch_deal_amount": "千次观看成交金额",
     "deal_conversion_rate": "成交转化率",
     "new_customer_conversion_rate": "新客转化率",
-    "live_recommend_total": "直播推荐累计",
-    "live_recommend_delta": "直播推荐增量",
+}
+
+PERCENT_METRICS = {
+    "effective_enter_rate",
+    "comment_rate",
+    "like_rate",
+    "deal_conversion_rate",
+    "new_customer_conversion_rate",
+}
+
+AMOUNT_METRICS = {
+    "deal_amount_total",
+    "deal_amount_delta",
+    "thousand_watch_deal_amount",
+}
+
+COUNT_METRICS = {
+    "live_recommend_total",
+    "live_recommend_delta",
+    "deal_order_total",
+    "deal_order_delta",
+    "deal_user_total",
+    "deal_user_delta",
+    "online_user_count",
+    "online_user_delta",
+}
+
+DELTA_METRICS = {
+    "live_recommend_delta",
+    "deal_amount_delta",
+    "deal_order_delta",
+    "deal_user_delta",
+    "online_user_delta",
+}
+
+DELTA_SOURCE_METRICS = {
+    "live_recommend_delta": "live_recommend_total",
+    "deal_amount_delta": "deal_amount_total",
+    "deal_order_delta": "deal_order_total",
+    "deal_user_delta": "deal_user_total",
+    "online_user_delta": "online_user_count",
 }
 
 EXCLUDED_PERCENT_VALUES = {1.0}
@@ -91,6 +152,51 @@ class Recognition:
     confidence: float
 
 
+@dataclass(frozen=True)
+class OcrTextEntry:
+    text: str
+    confidence: float
+    box: tuple[float, float, float, float]
+
+    @property
+    def cx(self) -> float:
+        return (self.box[0] + self.box[2]) / 2
+
+    @property
+    def cy(self) -> float:
+        return (self.box[1] + self.box[3]) / 2
+
+
+@dataclass(frozen=True)
+class AnchorSpec:
+    metric_name: str
+    aliases: tuple[str, ...]
+    region: str
+    value_width: int = 170
+    value_height: int = 45
+
+
+@dataclass(frozen=True)
+class CalibratedValueBox:
+    box: tuple[int, int, int, int]
+
+
+ANCHOR_SPECS = (
+    AnchorSpec("live_recommend_total", ("直播推荐",), "left", value_width=115),
+    AnchorSpec("deal_amount_total", ("累计成交金额", "成交金额"), "left", value_width=190, value_height=52),
+    AnchorSpec("deal_order_total", ("成交订单数",), "left", value_width=120),
+    AnchorSpec("deal_user_total", ("成交人数",), "left", value_width=120),
+    AnchorSpec("online_user_count", ("实时在线人数",), "left", value_width=120),
+    AnchorSpec("effective_enter_rate", ("直播有效进房率", "有效进房率"), "right"),
+    AnchorSpec("avg_watch_seconds", ("人均观看时长",), "right"),
+    AnchorSpec("comment_rate", ("评论率",), "right"),
+    AnchorSpec("like_rate", ("点赞率",), "right"),
+    AnchorSpec("thousand_watch_deal_amount", ("千次观看成交金额",), "right", value_width=190),
+    AnchorSpec("deal_conversion_rate", ("成交转化率",), "right"),
+    AnchorSpec("new_customer_conversion_rate", ("新客转化率",), "right"),
+)
+
+
 def process_live_dashboard_screenshots(
     root_path: str,
     progress: DashboardProgress | None = None,
@@ -124,7 +230,7 @@ def process_live_dashboard_screenshots(
             enabled=True,
             dashboard_root=str(dashboard_root),
             processed_sessions=[
-                build_dashboard_session_overview(session_dir)
+                build_dashboard_session_overview(session_dir, dashboard_root)
                 for session_dir in session_dirs
             ],
             message=f"未找到大屏截图场次：{requested_session}",
@@ -134,11 +240,13 @@ def process_live_dashboard_screenshots(
     total = max(len(session_dirs), 1)
     for index, session_dir in enumerate(session_dirs, start=1):
         if requested_session and session_dir.name != requested_session:
-            sessions.append(build_dashboard_session_overview(session_dir))
+            sessions.append(build_dashboard_session_overview(session_dir, dashboard_root))
             continue
         if progress is not None:
             progress(round((index - 1) / total * 90), f"识别大屏截图：{session_dir.name}")
-        sessions.append(process_dashboard_session(session_dir, progress=progress))
+        session = process_dashboard_session(session_dir, progress=progress)
+        save_dashboard_session_archive(dashboard_root, session)
+        sessions.append(session)
     sessions = [session for session in sessions if session.screenshot_count > 0]
     save_dashboard_cache()
     if progress is not None:
@@ -159,7 +267,7 @@ def scan_live_dashboard_sessions(root_path: str) -> LiveDashboardSummary | None:
 
     session_dirs = resolve_dashboard_session_dirs(dashboard_root)
     sessions = [
-        build_dashboard_session_overview(session_dir)
+        build_dashboard_session_overview(session_dir, dashboard_root)
         for session_dir in session_dirs
     ]
     sessions = [session for session in sessions if session.screenshot_count > 0]
@@ -194,7 +302,11 @@ def resolve_dashboard_session_dirs(dashboard_root: Path) -> list[Path]:
         return [dashboard_root]
 
     return sorted(
-        [path for path in dashboard_root.iterdir() if path.is_dir()],
+        [
+            path
+            for path in dashboard_root.iterdir()
+            if path.is_dir() and path.name != ARCHIVE_DIR_NAME
+        ],
         key=lambda item: item.name.lower(),
     )
 
@@ -204,12 +316,13 @@ def process_dashboard_session(
     progress: DashboardProgress | None = None,
 ) -> LiveDashboardSession:
     screenshots = list_screenshot_images(session_dir)
+    calibrated_boxes = calibrate_dashboard_value_boxes(screenshots[0]) if screenshots else {}
     points_by_index: dict[int, LiveDashboardPoint] = {}
     completed = 0
     workers = max(1, min(4, os.cpu_count() or 1, len(screenshots) or 1))
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {
-            executor.submit(analyze_dashboard_screenshot, path, index): index
+            executor.submit(analyze_dashboard_screenshot, path, index, calibrated_boxes): index
             for index, path in enumerate(screenshots, start=1)
         }
         for future in as_completed(futures):
@@ -222,7 +335,7 @@ def process_dashboard_session(
                     f"识别大屏截图：{session_dir.name} {completed}/{len(screenshots)}",
                 )
 
-    points = apply_live_recommend_deltas(
+    points = apply_delta_metrics(
         [points_by_index[index] for index in sorted(points_by_index)]
     )
     averages = average_metrics([point.metrics for point in points])
@@ -238,11 +351,14 @@ def process_dashboard_session(
     )
 
 
-def build_dashboard_session_overview(session_dir: Path) -> LiveDashboardSession:
+def build_dashboard_session_overview(
+    session_dir: Path,
+    dashboard_root: Path | None = None,
+) -> LiveDashboardSession:
     screenshots = list_screenshot_images(session_dir)
     start_time = parse_capture_time(screenshots[0].name) if screenshots else None
     end_time = parse_capture_time(screenshots[-1].name) if screenshots else None
-    return LiveDashboardSession(
+    overview = LiveDashboardSession(
         session_name=session_dir.name,
         folder_path=str(session_dir),
         screenshot_count=len(screenshots),
@@ -251,6 +367,72 @@ def build_dashboard_session_overview(session_dir: Path) -> LiveDashboardSession:
         averages=LiveDashboardMetrics(),
         points=[],
     )
+    if dashboard_root is None:
+        return overview
+
+    archived = load_dashboard_session_archive(dashboard_root, session_dir.name)
+    if archived is not None and archive_matches_session(archived, overview):
+        return archived
+    return overview
+
+
+def archive_matches_session(
+    archived: LiveDashboardSession,
+    overview: LiveDashboardSession,
+) -> bool:
+    return (
+        archived.session_name == overview.session_name
+        and archived.screenshot_count == overview.screenshot_count
+        and archived.start_time == overview.start_time
+        and archived.end_time == overview.end_time
+        and bool(archived.points)
+    )
+
+
+def load_dashboard_session_archive(
+    dashboard_root: Path,
+    session_name: str,
+) -> LiveDashboardSession | None:
+    archive_file = dashboard_archive_path(dashboard_root, session_name)
+    if not archive_file.exists():
+        return None
+
+    try:
+        payload = json.loads(archive_file.read_text(encoding="utf-8"))
+        if payload.get("version") != ARCHIVE_SCHEMA_VERSION:
+            return None
+        session_payload = payload.get("session", payload)
+        session = LiveDashboardSession.model_validate(session_payload)
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return None
+
+    if session.session_name != session_name:
+        return None
+    return session
+
+
+def save_dashboard_session_archive(
+    dashboard_root: Path,
+    session: LiveDashboardSession,
+) -> None:
+    archive_file = dashboard_archive_path(dashboard_root, session.session_name)
+    archive_file.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": ARCHIVE_SCHEMA_VERSION,
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "session": session.model_dump(mode="json"),
+    }
+    archive_file.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def dashboard_archive_path(dashboard_root: Path, session_name: str) -> Path:
+    safe_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", session_name).strip(" .")
+    if not safe_name:
+        safe_name = "dashboard-session"
+    return dashboard_root / ARCHIVE_DIR_NAME / f"{safe_name}.json"
 
 
 def list_screenshot_images(session_dir: Path) -> list[Path]:
@@ -264,7 +446,11 @@ def list_screenshot_images(session_dir: Path) -> list[Path]:
     )
 
 
-def analyze_dashboard_screenshot(image_path: Path, index: int) -> LiveDashboardPoint:
+def analyze_dashboard_screenshot(
+    image_path: Path,
+    index: int,
+    calibrated_boxes: dict[str, CalibratedValueBox] | None = None,
+) -> LiveDashboardPoint:
     stat = image_path.stat()
     cache_key = build_cache_key(image_path)
     cached = _dashboard_cache.get(cache_key)
@@ -273,16 +459,17 @@ def analyze_dashboard_screenshot(image_path: Path, index: int) -> LiveDashboardP
         return cached_point.model_copy(update={"index": index, "minute_offset": index - 1})
 
     full_image = open_rgb_image(image_path)
-    live_recommend_total = read_live_recommend_total(full_image)
-    right_panel = crop_right_panel(full_image)
-    layout_results = [read_layout_values(right_panel, layout) for layout in VALUE_LAYOUTS]
-    raw_values, confidence = select_best_layout(layout_results)
-    raw_values["live_recommend_total"] = live_recommend_total.text
+    if calibrated_boxes:
+        raw_values, confidence = read_calibrated_metric_values(full_image, calibrated_boxes)
+    else:
+        raw_values, confidence = read_anchor_metric_values(full_image)
+    fill_legacy_metric_values(full_image, raw_values)
     metric_values = {
         name: parse_metric_value(name, raw_values.get(name, ""))
         for name in METRIC_NAMES
     }
-    metric_values["live_recommend_delta"] = None
+    for delta_name in DELTA_METRICS:
+        metric_values[delta_name] = None
     missing_metrics = [
         METRIC_LABELS[name]
         for name, value in metric_values.items()
@@ -307,27 +494,34 @@ def analyze_dashboard_screenshot(image_path: Path, index: int) -> LiveDashboardP
     return point
 
 
-def apply_live_recommend_deltas(
+def apply_delta_metrics(
     points: list[LiveDashboardPoint],
 ) -> list[LiveDashboardPoint]:
-    previous_total: float | None = None
+    previous_values: dict[str, float | None] = {
+        source_name: None for source_name in DELTA_SOURCE_METRICS.values()
+    }
     updated_points: list[LiveDashboardPoint] = []
     for point in points:
-        total = repair_live_recommend_total(
-            point.metrics.live_recommend_total,
-            previous_total,
-        )
-        delta: float | None = None
-        if total is not None:
-            if previous_total is not None and total >= previous_total:
-                delta = total - previous_total
-            previous_total = total
+        metric_updates: dict[str, float | None] = {}
+        for delta_name, source_name in DELTA_SOURCE_METRICS.items():
+            value = getattr(point.metrics, source_name)
+            previous_value = previous_values[source_name]
+            value = repair_cumulative_metric_value(source_name, value, previous_value)
+            metric_updates[source_name] = value
+
+            delta: float | None = None
+            if value is not None:
+                if previous_value is not None:
+                    if source_name == "online_user_count":
+                        delta = value - previous_value
+                    elif value >= previous_value:
+                        delta = value - previous_value
+                if source_name == "online_user_count" or previous_value is None or value >= previous_value:
+                    previous_values[source_name] = value
+            metric_updates[delta_name] = delta
 
         metrics = point.metrics.model_copy(
-            update={
-                "live_recommend_total": total,
-                "live_recommend_delta": delta,
-            }
+            update=metric_updates
         )
         missing_metrics = [
             label
@@ -343,6 +537,36 @@ def apply_live_recommend_deltas(
             )
         )
     return updated_points
+
+
+def repair_cumulative_metric_value(
+    name: str,
+    value: float | None,
+    previous_value: float | None,
+) -> float | None:
+    if value is None or previous_value is None or value >= previous_value:
+        return value
+    if name == "online_user_count":
+        return value
+    if name == "deal_amount_total":
+        return repair_scaled_amount_total(value, previous_value)
+    return repair_live_recommend_total(value, previous_value)
+
+
+def repair_scaled_amount_total(
+    value: float,
+    previous_value: float,
+) -> float | None:
+    if value >= previous_value / 10:
+        return None
+    candidates = [
+        round(value * multiplier, 2)
+        for multiplier in (10, 100, 1000, 10000)
+        if value * multiplier >= previous_value
+    ]
+    if not candidates:
+        return None
+    return min(candidates, key=lambda candidate: candidate - previous_value)
 
 
 def repair_live_recommend_total(
@@ -412,6 +636,211 @@ def crop_right_panel(image: Image.Image) -> Image.Image:
     width, height = image.size
     left = max(width - RIGHT_PANEL_WIDTH, 0)
     return image.crop((left, 0, width, height))
+
+
+def calibrate_dashboard_value_boxes(
+    image_path: Path,
+) -> dict[str, CalibratedValueBox]:
+    image = open_rgb_image(image_path)
+    width, height = image.size
+    region_defs = {
+        "left": ((0, 0), image.crop((0, 0, width // 2, height))),
+        "right": ((max(width - RIGHT_PANEL_WIDTH, 0), 0), crop_right_panel(image)),
+    }
+    entries_by_region = {
+        name: detect_text_entries(region)
+        for name, (_, region) in region_defs.items()
+    }
+    boxes: dict[str, CalibratedValueBox] = {}
+    for spec in ANCHOR_SPECS:
+        origin, region = region_defs[spec.region]
+        anchor = find_anchor_entry(entries_by_region[spec.region], spec.aliases)
+        if anchor is None:
+            continue
+        boxes[spec.metric_name] = CalibratedValueBox(
+            box=anchor_value_box(anchor, spec, origin, region.size)
+        )
+    return boxes
+
+
+def anchor_value_box(
+    anchor: OcrTextEntry,
+    spec: AnchorSpec,
+    origin: tuple[int, int],
+    region_size: tuple[int, int],
+) -> tuple[int, int, int, int]:
+    x1, _, _, y2 = anchor.box
+    region_width, region_height = region_size
+    left = max(0, round(x1 - 6))
+    top = min(region_height, round(y2 + 2))
+    right = min(region_width, round(x1 + spec.value_width))
+    bottom = min(region_height, round(y2 + spec.value_height))
+    return (
+        origin[0] + left,
+        origin[1] + top,
+        origin[0] + right,
+        origin[1] + bottom,
+    )
+
+
+def read_calibrated_metric_values(
+    image: Image.Image,
+    calibrated_boxes: dict[str, CalibratedValueBox],
+) -> tuple[dict[str, str], float | None]:
+    raw_values: dict[str, str] = {}
+    confidences: list[float] = []
+    for spec in ANCHOR_SPECS:
+        value_box = calibrated_boxes.get(spec.metric_name)
+        if value_box is None:
+            continue
+        recognition = recognize_value_crop(image, value_box.box)
+        raw_values[spec.metric_name] = recognition.text
+        if parse_metric_value(spec.metric_name, recognition.text) is not None:
+            confidences.append(recognition.confidence)
+
+    confidence = round(sum(confidences) / len(confidences), 4) if confidences else None
+    return raw_values, confidence
+
+
+def read_anchor_metric_values(
+    image: Image.Image,
+) -> tuple[dict[str, str], float | None]:
+    width, height = image.size
+    regions = {
+        "left": image.crop((0, 0, width // 2, height)),
+        "right": crop_right_panel(image),
+    }
+    entries_by_region = {
+        name: detect_text_entries(region)
+        for name, region in regions.items()
+    }
+    raw_values: dict[str, str] = {}
+    confidences: list[float] = []
+    for spec in ANCHOR_SPECS:
+        region = regions[spec.region]
+        entries = entries_by_region[spec.region]
+        recognition = read_metric_by_anchor(region, entries, spec)
+        if recognition is None:
+            continue
+        raw_values[spec.metric_name] = recognition.text
+        if parse_metric_value(spec.metric_name, recognition.text) is not None:
+            confidences.append(recognition.confidence)
+
+    confidence = round(sum(confidences) / len(confidences), 4) if confidences else None
+    return raw_values, confidence
+
+
+def detect_text_entries(image: Image.Image) -> list[OcrTextEntry]:
+    engine = get_ocr_engine()
+    with _ocr_lock:
+        result, _ = engine(image, use_det=True, use_cls=False, use_rec=True)
+    entries: list[OcrTextEntry] = []
+    for item in result or []:
+        if len(item) < 3:
+            continue
+        polygon, text, confidence = item
+        entries.append(
+            OcrTextEntry(
+                text=str(text).strip(),
+                confidence=float(confidence or 0),
+                box=polygon_bounds(polygon),
+            )
+        )
+    return entries
+
+
+def polygon_bounds(polygon: list[list[float]]) -> tuple[float, float, float, float]:
+    xs = [point[0] for point in polygon]
+    ys = [point[1] for point in polygon]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def read_metric_by_anchor(
+    region: Image.Image,
+    entries: list[OcrTextEntry],
+    spec: AnchorSpec,
+) -> Recognition | None:
+    anchor = find_anchor_entry(entries, spec.aliases)
+    if anchor is None:
+        return None
+
+    fallback = find_detected_value_below_anchor(entries, anchor, spec)
+    if fallback is not None:
+        return fallback
+
+    x1, _, _, y2 = anchor.box
+    box = (
+        max(0, round(x1 - 6)),
+        min(region.height, round(y2 + 2)),
+        min(region.width, round(x1 + spec.value_width)),
+        min(region.height, round(y2 + spec.value_height)),
+    )
+    recognition = recognize_value_crop(region, box)
+    if parse_metric_value(spec.metric_name, recognition.text) is not None:
+        return recognition
+    return recognition
+
+
+def find_anchor_entry(
+    entries: list[OcrTextEntry],
+    aliases: tuple[str, ...],
+) -> OcrTextEntry | None:
+    for alias in aliases:
+        normalized_alias = normalize_anchor_text(alias)
+        matches = [
+            entry
+            for entry in entries
+            if normalized_alias in normalize_anchor_text(entry.text)
+        ]
+        if matches:
+            return max(matches, key=lambda entry: (entry.confidence, -entry.cy))
+    return None
+
+
+def find_detected_value_below_anchor(
+    entries: list[OcrTextEntry],
+    anchor: OcrTextEntry,
+    spec: AnchorSpec,
+) -> Recognition | None:
+    x1, _, _, y2 = anchor.box
+    x_left = x1 - 12
+    x_right = x1 + spec.value_width
+    candidates = []
+    for entry in entries:
+        if entry.cy <= y2 or entry.cy - y2 > 72:
+            continue
+        if entry.cx < x_left or entry.cx > x_right:
+            continue
+        if parse_metric_value(spec.metric_name, entry.text) is None:
+            continue
+        candidates.append(entry)
+    if not candidates:
+        return None
+
+    best = min(
+        candidates,
+        key=lambda entry: (entry.cy - y2, abs(entry.cx - x1), -entry.confidence),
+    )
+    return Recognition(text=best.text, confidence=best.confidence)
+
+
+def normalize_anchor_text(text: str) -> str:
+    return re.sub(r"\s+", "", normalize_ocr_text(text))
+
+
+def fill_legacy_metric_values(
+    image: Image.Image,
+    raw_values: dict[str, str],
+) -> None:
+    if "live_recommend_total" not in raw_values:
+        raw_values["live_recommend_total"] = read_live_recommend_total(image).text
+
+    right_panel = crop_right_panel(image)
+    layout_results = [read_layout_values(right_panel, layout) for layout in VALUE_LAYOUTS]
+    legacy_values, _ = select_best_layout(layout_results)
+    for name, value in legacy_values.items():
+        if name not in raw_values or parse_metric_value(name, raw_values[name]) is None:
+            raw_values[name] = value
 
 
 def read_live_recommend_total(image: Image.Image) -> Recognition:
@@ -494,9 +923,15 @@ def parse_metric_value(name: str, text: str) -> float | None:
     if not cleaned or cleaned in {"-", "一", "—"}:
         return None
 
-    if name in {"live_recommend_total", "live_recommend_delta"}:
+    if name in COUNT_METRICS:
         match = re.search(r"\d+", cleaned.replace(",", ""))
         return float(match.group(0)) if match else None
+
+    if name == "thousand_watch_deal_amount":
+        return parse_cent_amount_value(cleaned)
+
+    if name in AMOUNT_METRICS:
+        return parse_amount_value(cleaned)
 
     if name == "avg_watch_seconds":
         numbers = [float(item) for item in re.findall(r"\d+(?:\.\d+)?", cleaned)]
@@ -506,15 +941,72 @@ def parse_metric_value(name: str, text: str) -> float | None:
             value = numbers[0] * 60 + numbers[1]
         else:
             value = numbers[0]
-        return value if value > 0 else None
+        return value
 
-    match = re.search(r"\d+(?:\.\d+)?", cleaned)
+    percent_text = cleaned.replace(",", ".")
+    match = re.search(r"\d+(?:\.\d+)?", percent_text)
     if not match:
         return None
     value = round(float(match.group(0)) / 100, 6)
     if value in EXCLUDED_PERCENT_VALUES:
         return None
     return value
+
+
+def parse_amount_value(text: str) -> float | None:
+    normalized = (
+        text.replace("，", ",")
+        .replace("。", ".")
+        .replace("．", ".")
+        .replace(" ", "")
+    )
+    value_text = re.sub(r"[^\d.,]", "", normalized)
+    if not value_text:
+        return None
+
+    if re.fullmatch(r"\d{1,3}(,\d{3})+\.\d{2}", value_text):
+        value = float(value_text.replace(",", ""))
+    elif re.fullmatch(r"\d+[.,]\d{2}", value_text):
+        value = float(value_text.replace(",", "."))
+    elif re.fullmatch(r"\d+[.,]\d{3}", value_text):
+        value = float(value_text.replace(",", "").replace(".", ""))
+    else:
+        digits = re.sub(r"\D", "", value_text)
+        if not digits:
+            return None
+        value = float(digits)
+
+    if "万" in normalized:
+        value *= 10000
+    return round(value, 2)
+
+
+def parse_cent_amount_value(text: str) -> float | None:
+    normalized = (
+        text.replace("，", ",")
+        .replace("。", ".")
+        .replace("．", ".")
+        .replace(" ", "")
+    )
+    value_text = re.sub(r"[^\d.,]", "", normalized)
+    if not value_text:
+        return None
+
+    if re.fullmatch(r"\d{1,3}(,\d{3})+\.\d{2}", value_text):
+        value = float(value_text.replace(",", ""))
+    elif re.fullmatch(r"\d+[.,]\d{2}", value_text):
+        value = float(value_text.replace(",", "."))
+    else:
+        digits = re.sub(r"\D", "", value_text)
+        if not digits:
+            return None
+        if len(digits) >= 5:
+            digits = digits[:-1]
+        value = float(digits) / 100
+
+    if "万" in normalized:
+        value *= 10000
+    return round(value, 2)
 
 
 def normalize_ocr_text(text: str) -> str:

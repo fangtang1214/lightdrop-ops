@@ -177,14 +177,23 @@ class TableProcessSummary(BaseModel):
 
 
 class LiveDashboardMetrics(BaseModel):
-    like_rate: float | None = None
-    comment_rate: float | None = None
-    avg_watch_seconds: float | None = None
+    live_recommend_delta: float | None = None
+    live_recommend_total: float | None = None
+    deal_amount_total: float | None = None
+    deal_amount_delta: float | None = None
+    deal_order_total: float | None = None
+    deal_order_delta: float | None = None
+    deal_user_total: float | None = None
+    deal_user_delta: float | None = None
+    online_user_count: float | None = None
+    online_user_delta: float | None = None
     effective_enter_rate: float | None = None
+    avg_watch_seconds: float | None = None
+    comment_rate: float | None = None
+    like_rate: float | None = None
+    thousand_watch_deal_amount: float | None = None
     deal_conversion_rate: float | None = None
     new_customer_conversion_rate: float | None = None
-    live_recommend_total: float | None = None
-    live_recommend_delta: float | None = None
 
 
 class LiveDashboardPoint(BaseModel):

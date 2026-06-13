@@ -147,14 +147,23 @@ export interface ConversionDropRankRecord {
 }
 
 export interface LiveDashboardMetrics {
-  like_rate?: number | null;
-  comment_rate?: number | null;
-  avg_watch_seconds?: number | null;
+  live_recommend_delta?: number | null;
+  live_recommend_total?: number | null;
+  deal_amount_total?: number | null;
+  deal_amount_delta?: number | null;
+  deal_order_total?: number | null;
+  deal_order_delta?: number | null;
+  deal_user_total?: number | null;
+  deal_user_delta?: number | null;
+  online_user_count?: number | null;
+  online_user_delta?: number | null;
   effective_enter_rate?: number | null;
+  avg_watch_seconds?: number | null;
+  comment_rate?: number | null;
+  like_rate?: number | null;
+  thousand_watch_deal_amount?: number | null;
   deal_conversion_rate?: number | null;
   new_customer_conversion_rate?: number | null;
-  live_recommend_total?: number | null;
-  live_recommend_delta?: number | null;
 }
 
 export interface LiveDashboardPoint {

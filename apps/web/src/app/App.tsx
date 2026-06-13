@@ -171,6 +171,7 @@ export function App() {
           selectedSession={workspace.selectedDashboard}
           onSelectSession={workspace.setSelectedDashboardSession}
           onAnalyze={() => actions.analyzeDashboardReview(workspace.selectedDashboard?.session_name)}
+          onAnalyzeAll={() => actions.analyzeDashboardReview()}
           loading={actions.loadingFor("dashboardReview")}
           disabled={!workspace.rootPath.trim() || actions.loading}
         />

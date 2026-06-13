@@ -1,5 +1,6 @@
-import { Card, Checkbox, Col, Image, Row, Select, Space, Table, Tag, Tooltip, Typography } from "antd";
+import { Button, Card, Checkbox, Col, Image, Row, Select, Space, Table, Tag, Tooltip, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { Layers } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useMemo, useState } from "react";
 import type { LiveDashboardPoint, LiveDashboardSession } from "../../api";
@@ -16,14 +17,23 @@ const dashboardMetricConfigs: Array<{
   key: DashboardMetricKey;
   label: string;
   color: string;
-  kind: "percent" | "duration" | "count";
+  kind: "percent" | "duration" | "count" | "amount";
 }> = [
   { key: "live_recommend_delta", label: "直播推荐增量", color: "#d88912", kind: "count" },
-  { key: "live_recommend_total", label: "直播推荐累计", color: "#8a6333", kind: "count" },
-  { key: "like_rate", label: "点赞率", color: "#21735b", kind: "percent" },
-  { key: "comment_rate", label: "评论率", color: "#9a4d1f", kind: "percent" },
+  { key: "live_recommend_total", label: "直播推荐总量", color: "#8a6333", kind: "count" },
+  { key: "deal_amount_total", label: "成交金额总量", color: "#2f7d63", kind: "amount" },
+  { key: "deal_amount_delta", label: "成交金额增量", color: "#6f9f3a", kind: "amount" },
+  { key: "deal_order_total", label: "成交订单数总量", color: "#335c81", kind: "count" },
+  { key: "deal_order_delta", label: "成交订单数增量", color: "#5a86ad", kind: "count" },
+  { key: "deal_user_total", label: "成交人数总量", color: "#7f4f24", kind: "count" },
+  { key: "deal_user_delta", label: "成交人数增量", color: "#b16a2c", kind: "count" },
+  { key: "online_user_count", label: "实时在线人数", color: "#4b6f44", kind: "count" },
+  { key: "online_user_delta", label: "实时在线人数增量", color: "#85a35c", kind: "count" },
+  { key: "effective_enter_rate", label: "直播有效进房率", color: "#7a4bb2", kind: "percent" },
   { key: "avg_watch_seconds", label: "人均观看时长", color: "#315cbe", kind: "duration" },
-  { key: "effective_enter_rate", label: "有效进房率", color: "#7a4bb2", kind: "percent" },
+  { key: "comment_rate", label: "评论率", color: "#9a4d1f", kind: "percent" },
+  { key: "like_rate", label: "点赞率", color: "#21735b", kind: "percent" },
+  { key: "thousand_watch_deal_amount", label: "千次观看成交金额", color: "#a05a8b", kind: "amount" },
   { key: "deal_conversion_rate", label: "成交转化率", color: "#c45a73", kind: "percent" },
   { key: "new_customer_conversion_rate", label: "新客转化率", color: "#6a7d19", kind: "percent" },
 ];
@@ -33,6 +43,7 @@ export function LiveDashboardReview({
   selectedSession,
   onSelectSession,
   onAnalyze,
+  onAnalyzeAll,
   loading,
   disabled,
 }: {
@@ -40,6 +51,7 @@ export function LiveDashboardReview({
   selectedSession: LiveDashboardSession | null;
   onSelectSession: (sessionName: string) => void;
   onAnalyze: () => void;
+  onAnalyzeAll: () => void;
   loading: boolean;
   disabled: boolean;
 }) {
@@ -87,7 +99,7 @@ export function LiveDashboardReview({
     },
     ...dashboardMetricConfigs.map((metric) => ({
       title: metric.label,
-      width: metric.kind === "duration" ? 130 : 110,
+      width: metric.kind === "duration" || metric.kind === "amount" ? 140 : 120,
       render: (_: unknown, record: LiveDashboardPoint) =>
         formatDashboardMetric(record.metrics[metric.key], metric.kind),
       sorter: (a: LiveDashboardPoint, b: LiveDashboardPoint) =>
@@ -123,6 +135,9 @@ export function LiveDashboardReview({
               value: session.session_name,
             }))}
           />
+          <Button icon={<Layers size={16} />} loading={loading} disabled={disabled} onClick={onAnalyzeAll}>
+            一键分析所有场次
+          </Button>
           <AnalysisAction loading={loading} disabled={disabled} onAnalyze={onAnalyze} />
         </Space>
       }
@@ -170,7 +185,7 @@ export function LiveDashboardReview({
                 rowKey="file_path"
                 columns={columns}
                 dataSource={selectedSession.points}
-                scroll={{ x: 1120 }}
+                scroll={{ x: 2260 }}
                 pagination={{ pageSize: 20, showSizeChanger: true }}
               />
             </>

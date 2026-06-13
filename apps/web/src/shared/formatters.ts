@@ -29,9 +29,14 @@ export function formatPercent(value: number) {
   return `${(value * 100).toFixed(2)}%`;
 }
 
-export function formatDashboardMetric(value: number | null | undefined, kind: "percent" | "duration" | "count") {
+export function formatAmount(value: number) {
+  return `¥${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+export function formatDashboardMetric(value: number | null | undefined, kind: "percent" | "duration" | "count" | "amount") {
   if (value === null || value === undefined) return "-";
   if (kind === "duration") return formatDuration(value);
+  if (kind === "amount") return formatAmount(value);
   if (kind === "count") return Math.round(value).toLocaleString();
   return formatPercent(value);
 }
